@@ -10,11 +10,10 @@ if (!fs.existsSync(resultsDir)) {
     fs.mkdirSync(resultsDir);
 }
 
-
-async function fetchPageWithRetry(pageNumber, pageSize = 300, maxRetries = 3) {
+async function fetchPageWithRetry(searchString, pageNumber, pageSize = 300, maxRetries = 3) {
     const resultMax = pageNumber * pageSize;
-    const data = `pageSize=${pageSize}&resultMax=${resultMax}`;
-    console.log(clc.blue(`Fetching page ${pageNumber}...`));
+    const data = `searchString=${searchString}&pageSize=${pageSize}&resultMax=${resultMax}`;
+    console.log(clc.blue(`Fetching page ${pageNumber} for letter '${searchString}'...`));
     
     const config = {
         method: 'post',
@@ -39,7 +38,6 @@ async function fetchPageWithRetry(pageNumber, pageSize = 300, maxRetries = 3) {
             if (attempt === maxRetries) {
                 throw new Error(`Failed to fetch page ${pageNumber} after ${maxRetries} attempts`);
             }
-            // Wait for a short time before retrying (you can adjust this as needed)
             await new Promise(resolve => setTimeout(resolve, 2000));
         }
     }
@@ -132,29 +130,29 @@ async function saveToFile(data, filename, format = 'json') {
     console.log(clc.green(`${format.toUpperCase()} file has been saved to: ${filePath}`));
 }
 
-async function scrapeConsultants(maxPages = Infinity) {
+async function scrapeConsultantsForLetter(letter) {
     let allConsultants = [];
     let pageNumber = 1;
 
-    while (pageNumber <= maxPages) {
+    while (true) {
         try {
-            const html = await fetchPageWithRetry(pageNumber);
+            const html = await fetchPageWithRetry(letter, pageNumber);
             const consultants = parseHtml(html);
             
             if (consultants.length === 0) {
-                console.log(clc.yellow(`No more consultants found on page ${pageNumber}. Stopping.`));
+                console.log(clc.yellow(`No more consultants found for letter '${letter}' on page ${pageNumber}. Moving to next letter.`));
                 break;
             }
             
             allConsultants = allConsultants.concat(consultants);
-            console.log(clc.cyan(`Page ${pageNumber}: Found ${consultants.length} consultants. Total: ${allConsultants.length}`));
+            console.log(clc.cyan(`Letter '${letter}', Page ${pageNumber}: Found ${consultants.length} consultants. Total for letter: ${allConsultants.length}`));
             
-            await saveToFile(consultants, `consultants_page_${pageNumber}.json`);
-            await saveToFile(prepareConsultantData(consultants), `consultants_page_${pageNumber}.csv`, 'csv');
+            await saveToFile(consultants, `consultants_${letter}_page_${pageNumber}.json`);
+            await saveToFile(prepareConsultantData(consultants), `consultants_${letter}_page_${pageNumber}.csv`, 'csv');
             
             pageNumber++;
         } catch (error) {
-            console.error(clc.red(`Error processing page ${pageNumber}:`), error);
+            console.error(clc.red(`Error processing page ${pageNumber} for letter '${letter}':`), error);
             break;
         }
     }
@@ -162,12 +160,22 @@ async function scrapeConsultants(maxPages = Infinity) {
     return allConsultants;
 }
 
-async function scrapeConsultantsList(maxPages = Infinity) {
-    console.log(clc.magenta(`Starting scraper. Max pages: ${maxPages === Infinity ? 'Unlimited' : maxPages}`));
+async function scrapeConsultantsList() {
+    console.log(clc.magenta(`Starting scraper for all alphabets...`));
     
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    let allConsultants = [];
+
     try {
         const startTime = Date.now();
-        const allConsultants = await scrapeConsultants(maxPages);
+
+        for (const letter of alphabet) {
+            console.log(clc.green.bold(`\nStarting scrape for letter '${letter}'`));
+            const consultantsForLetter = await scrapeConsultantsForLetter(letter);
+            allConsultants = allConsultants.concat(consultantsForLetter);
+            console.log(clc.green(`Finished scraping for letter '${letter}'. Total consultants: ${consultantsForLetter.length}`));
+        }
+
         const endTime = Date.now();
         
         if (allConsultants.length > 0) {
@@ -176,7 +184,6 @@ async function scrapeConsultantsList(maxPages = Infinity) {
             
             console.log(clc.green.bold(`\nScraping completed successfully!`));
             console.log(clc.cyan(`Total consultants scraped: ${allConsultants.length}`));
-            console.log(clc.cyan(`Total pages scraped: ${maxPages === Infinity ? 'All available' : Math.min(maxPages, Math.ceil(allConsultants.length / 50))}`));
             console.log(clc.cyan(`Time taken: ${((endTime - startTime) / 1000).toFixed(2)} seconds`));
         } else {
             console.log(clc.yellow(`No consultants were scraped. Please check if the website structure has changed or if there are any access issues.`));
@@ -186,6 +193,5 @@ async function scrapeConsultantsList(maxPages = Infinity) {
     }
 }
 
-// Usage: node script.js [maxPages]
-const maxPages = process.argv[2] ? parseInt(process.argv[2]) : Infinity;
-scrapeConsultantsList(maxPages);
+// Usage: node script.js
+scrapeConsultantsList();
