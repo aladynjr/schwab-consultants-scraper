@@ -192,7 +192,7 @@ async function saveConsolidatedFiles(results) {
     await saveToFile(preparedResults, 'all_consultants_details.csv', 'csv');
 }
 async function loadConsultantData() {
-    const dataPath = path.join(__dirname, 'results_list', 'all_consultants_list.json');
+    const dataPath = path.join(__dirname, 'results_list', 'all_consultants_list_unique.json');
     try {
         const rawData = await fs.readFile(dataPath, 'utf8');
         return JSON.parse(rawData);

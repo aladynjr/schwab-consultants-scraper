@@ -10,7 +10,7 @@ if (!fs.existsSync(resultsDir)) {
     fs.mkdirSync(resultsDir);
 }
 
-async function fetchPageWithRetry(pageNumber, pageSize = 300, maxRetries = 3) {
+async function fetchPageWithRetry(pageNumber, pageSize = 100, maxRetries = 3) {
     const resultMax = pageNumber === 1 ? 0 : (pageNumber - 1) * pageSize;
     const data = `searchString=&pageSize=${pageSize}&resultMax=${resultMax}`;
     console.log(clc.blue(`Fetching page ${pageNumber}...`));
@@ -32,6 +32,8 @@ async function fetchPageWithRetry(pageNumber, pageSize = 300, maxRetries = 3) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const response = await axios.request(config);
+            const responseSizeKB = JSON.stringify(response.data).length / 1024;
+            console.log(clc.magenta(`Response size: ${responseSizeKB.toFixed(2)} KB`));
             return response.data;
         } catch (error) {
             console.error(clc.yellow(`Attempt ${attempt} failed for page ${pageNumber}:`, error.message));
@@ -42,6 +44,21 @@ async function fetchPageWithRetry(pageNumber, pageSize = 300, maxRetries = 3) {
         }
     }
 }
+const logMemoryUsage = () => {
+    const used = process.memoryUsage();
+    console.log(clc.cyan('Memory usage:'));
+    for (let key in used) {
+        console.log(clc.cyan(`  ${key}: ${Math.round(used[key] / 1024 / 1024 * 100) / 100} MB`));
+    }
+};
+
+// Set up interval to log memory usage every 10 seconds
+const memoryLoggingInterval = setInterval(logMemoryUsage, 10000);
+
+// Make sure to clear the interval when the script is done
+process.on('exit', () => {
+    clearInterval(memoryLoggingInterval);
+});
 
 function parseConsultant($, element) {
     const consultant = {
