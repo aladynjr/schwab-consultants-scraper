@@ -4,6 +4,7 @@
     "chalk": "^5.3.0",
     "cheerio": "^1.0.0",
     "cli-color": "^2.0.4",
+    "csv-parser": "^3.0.0",
     "csv-writer": "^1.6.0",
     "https-proxy-agent": "^5.0.1",
     "json2csv": "^6.0.0-alpha.2",
