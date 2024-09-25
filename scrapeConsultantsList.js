@@ -125,7 +125,7 @@ async function saveToFile(data, filename, format = 'json') {
 async function scrapeConsultants(maxPages = Infinity) {
     let allConsultants = [];
     let pageNumber = 1;
-    const batchSize = 5;
+    const batchSize = 1;
 
     while (pageNumber <= maxPages) {
         const batch = [];
