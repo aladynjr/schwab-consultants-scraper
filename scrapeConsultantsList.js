@@ -4,9 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const clc = require('cli-color');
-const HttpsProxyAgent = require('https-proxy-agent');
 
-const resultsDir = path.join(__dirname, 'results');
+const resultsDir = path.join(__dirname, 'results_list');
 if (!fs.existsSync(resultsDir)) {
     fs.mkdirSync(resultsDir);
 }
