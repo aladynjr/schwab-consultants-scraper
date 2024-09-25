@@ -10,10 +10,10 @@ if (!fs.existsSync(resultsDir)) {
     fs.mkdirSync(resultsDir);
 }
 
-async function fetchPageWithRetry(searchString, pageNumber, pageSize = 300, maxRetries = 3) {
+async function fetchPageWithRetry(pageNumber, pageSize = 300, maxRetries = 3) {
     const resultMax = pageNumber === 1 ? 0 : (pageNumber - 1) * pageSize;
-    const data = `searchString=${searchString}&pageSize=${pageSize}&resultMax=${resultMax}`;
-    console.log(clc.blue(`Fetching page ${pageNumber} for letter '${searchString}'...`));
+    const data = `searchString=&pageSize=${pageSize}&resultMax=${resultMax}`;
+    console.log(clc.blue(`Fetching page ${pageNumber}...`));
     console.log(data)
     const config = {
         method: 'post',
@@ -130,35 +130,7 @@ async function saveToFile(data, filename, format = 'json') {
     console.log(clc.green(`${format.toUpperCase()} file has been saved to: ${filePath}`));
 }
 
-async function scrapeConsultantsForLetter(letter) {
-    let allConsultants = [];
-    let pageNumber = 1;
 
-    while (true) {
-        try {
-            const html = await fetchPageWithRetry(letter, pageNumber);
-            const consultants = parseHtml(html);
-            
-            if (consultants.length === 0) {
-                console.log(clc.yellow(`No more consultants found for letter '${letter}' on page ${pageNumber}. Moving to next letter.`));
-                break;
-            }
-            
-            allConsultants = allConsultants.concat(consultants);
-            console.log(clc.cyan(`Letter '${letter}', Page ${pageNumber}: Found ${consultants.length} consultants. Total for letter: ${allConsultants.length}`));
-            
-            await saveToFile(consultants, `consultants_${letter}_page_${pageNumber}.json`);
-            await saveToFile(prepareConsultantData(consultants), `consultants_${letter}_page_${pageNumber}.csv`, 'csv');
-            
-            pageNumber++;
-        } catch (error) {
-            console.error(clc.red(`Error processing page ${pageNumber} for letter '${letter}':`), error);
-            break;
-        }
-    }
-
-    return allConsultants;
-}
 
 function removeDuplicates(consultants) {
     const uniqueConsultants = new Map();
@@ -171,19 +143,31 @@ function removeDuplicates(consultants) {
 }
 
 async function scrapeConsultantsList() {
-    console.log(clc.magenta(`Starting scraper for all alphabets...`));
+    console.log(clc.magenta(`Starting scraper for all consultants...`));
     
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
     let allConsultants = [];
+    let pageNumber = 1;
 
     try {
         const startTime = Date.now();
 
-        for (const letter of alphabet) {
-            console.log(clc.green.bold(`\nStarting scrape for letter '${letter}'`));
-            const consultantsForLetter = await scrapeConsultantsForLetter(letter);
-            allConsultants = allConsultants.concat(consultantsForLetter);
-            console.log(clc.green(`Finished scraping for letter '${letter}'. Total consultants: ${consultantsForLetter.length}`));
+        while (true) {
+            console.log(clc.green.bold(`\nFetching page ${pageNumber}`));
+            const html = await fetchPageWithRetry(pageNumber);
+            const consultants = parseHtml(html);
+            
+            if (consultants.length === 0) {
+                console.log(clc.yellow(`No more consultants found on page ${pageNumber}. Finishing scrape.`));
+                break;
+            }
+            
+            allConsultants = allConsultants.concat(consultants);
+            console.log(clc.cyan(`Page ${pageNumber}: Found ${consultants.length} consultants. Total: ${allConsultants.length}`));
+            
+            await saveToFile(consultants, `consultants_page_${pageNumber}.json`);
+            await saveToFile(prepareConsultantData(consultants), `consultants_page_${pageNumber}.csv`, 'csv');
+            
+            pageNumber++;
         }
 
         const endTime = Date.now();
