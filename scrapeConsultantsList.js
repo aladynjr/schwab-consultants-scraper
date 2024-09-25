@@ -6,13 +6,13 @@ const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const clc = require('cli-color');
 const HttpsProxyAgent = require('https-proxy-agent');
 
-const resultsDir = path.join(__dirname, 'results_list');
+const resultsDir = path.join(__dirname, 'results');
 if (!fs.existsSync(resultsDir)) {
     fs.mkdirSync(resultsDir);
 }
 
 
-async function fetchPage(pageNumber, pageSize = 300, retries = 3) {
+async function fetchPageWithRetry(pageNumber, pageSize = 300, maxRetries = 3) {
     const resultMax = pageNumber * pageSize;
     const data = `pageSize=${pageSize}&resultMax=${resultMax}`;
     console.log(clc.blue(`Fetching page ${pageNumber}...`));
@@ -31,35 +31,20 @@ async function fetchPage(pageNumber, pageSize = 300, retries = 3) {
         data: data,
     };
     
-    for (let attempt = 1; attempt <= retries; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const response = await axios.request(config);
-            const html = response.data;
-            
-            // Check if the response contains consultant data
-            const $ = cheerio.load(html);
-            const consultants = $('#fcSearchResult');
-            
-            if (consultants.length === 0) {
-                console.log(clc.yellow(`No consultants found on page ${pageNumber}. Attempt ${attempt} of ${retries}.`));
-                if (attempt === retries) {
-                    throw new Error('No consultant data found after all retries');
-                }
-            } else {
-                return html;
-            }
+            return response.data;
         } catch (error) {
-            console.error(clc.red(`Error fetching page ${pageNumber}. Attempt ${attempt} of ${retries}.`), error.message);
-            if (attempt === retries) {
-                throw error;
+            console.error(clc.yellow(`Attempt ${attempt} failed for page ${pageNumber}:`, error.message));
+            if (attempt === maxRetries) {
+                throw new Error(`Failed to fetch page ${pageNumber} after ${maxRetries} attempts`);
             }
+            // Wait for a short time before retrying (you can adjust this as needed)
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
-        
-        // Wait before next retry
-        await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
     }
 }
-
 
 function parseConsultant($, element) {
     const consultant = {
@@ -151,83 +136,55 @@ async function saveToFile(data, filename, format = 'json') {
 async function scrapeConsultants(maxPages = Infinity) {
     let allConsultants = [];
     let pageNumber = 1;
-    const batchSize = 2;
 
     while (pageNumber <= maxPages) {
-        const batch = [];
-        for (let i = 0; i < batchSize && pageNumber <= maxPages; i++) {
-            batch.push(fetchPage(pageNumber));
-            pageNumber++;
-        }
-
         try {
-            const batchResults = await Promise.all(batch);
+            const html = await fetchPageWithRetry(pageNumber);
+            const consultants = parseHtml(html);
             
-            for (let i = 0; i < batchResults.length; i++) {
-                const html = batchResults[i];
-                const consultants = parseHtml(html);
-                
-                if (consultants.length === 0) {
-                    console.log(clc.yellow(`No more consultants found on page ${pageNumber - batchResults.length + i}. Stopping.`));
-                    return allConsultants;
-                }
-                
-                allConsultants = allConsultants.concat(consultants);
-                console.log(clc.cyan(`Page ${pageNumber - batchResults.length + i}: Found ${consultants.length} consultants. Total: ${allConsultants.length}`));
-                
-                await saveToFile(consultants, `consultants_page_${pageNumber - batchResults.length + i}.json`);
-                await saveToFile(prepareConsultantData(consultants), `consultants_page_${pageNumber - batchResults.length + i}.csv`, 'csv');
+            if (consultants.length === 0) {
+                console.log(clc.yellow(`No more consultants found on page ${pageNumber}. Stopping.`));
+                break;
             }
+            
+            allConsultants = allConsultants.concat(consultants);
+            console.log(clc.cyan(`Page ${pageNumber}: Found ${consultants.length} consultants. Total: ${allConsultants.length}`));
+            
+            await saveToFile(consultants, `consultants_page_${pageNumber}.json`);
+            await saveToFile(prepareConsultantData(consultants), `consultants_page_${pageNumber}.csv`, 'csv');
+            
+            pageNumber++;
         } catch (error) {
-            console.error(clc.red(`Error processing batch starting at page ${pageNumber - batch.length}:`), error);
-            // Optionally, you can choose to break the loop here if you want to stop on any error
-            // break;
+            console.error(clc.red(`Error processing page ${pageNumber}:`), error);
+            break;
         }
     }
 
     return allConsultants;
 }
 
-
-
 async function scrapeConsultantsList(maxPages = Infinity) {
-    let allConsultants = [];
-    let pageNumber = 1;
-    const batchSize = 2;
-
-    while (pageNumber <= maxPages) {
-        const batch = [];
-        for (let i = 0; i < batchSize && pageNumber <= maxPages; i++) {
-            batch.push(fetchPage(pageNumber));
-            pageNumber++;
-        }
-
-        try {
-            const batchResults = await Promise.all(batch);
+    console.log(clc.magenta(`Starting scraper. Max pages: ${maxPages === Infinity ? 'Unlimited' : maxPages}`));
+    
+    try {
+        const startTime = Date.now();
+        const allConsultants = await scrapeConsultants(maxPages);
+        const endTime = Date.now();
+        
+        if (allConsultants.length > 0) {
+            await saveToFile(allConsultants, 'all_consultants_list.json');
+            await saveToFile(prepareConsultantData(allConsultants), 'all_consultants_list.csv', 'csv');
             
-            for (let i = 0; i < batchResults.length; i++) {
-                const html = batchResults[i];
-                const consultants = parseHtml(html);
-                
-                if (consultants.length === 0) {
-                    console.log(clc.yellow(`No more consultants found on page ${pageNumber - batchResults.length + i}. Stopping.`));
-                    return allConsultants;
-                }
-                
-                allConsultants = allConsultants.concat(consultants);
-                console.log(clc.cyan(`Page ${pageNumber - batchResults.length + i}: Found ${consultants.length} consultants. Total: ${allConsultants.length}`));
-                
-                await saveToFile(consultants, `consultants_page_${pageNumber - batchResults.length + i}.json`);
-                await saveToFile(prepareConsultantData(consultants), `consultants_page_${pageNumber - batchResults.length + i}.csv`, 'csv');
-            }
-        } catch (error) {
-            console.error(clc.red(`Error processing batch starting at page ${pageNumber - batch.length}:`), error);
-            // Optionally, you can choose to break the loop here if you want to stop on any error
-            // break;
+            console.log(clc.green.bold(`\nScraping completed successfully!`));
+            console.log(clc.cyan(`Total consultants scraped: ${allConsultants.length}`));
+            console.log(clc.cyan(`Total pages scraped: ${maxPages === Infinity ? 'All available' : Math.min(maxPages, Math.ceil(allConsultants.length / 50))}`));
+            console.log(clc.cyan(`Time taken: ${((endTime - startTime) / 1000).toFixed(2)} seconds`));
+        } else {
+            console.log(clc.yellow(`No consultants were scraped. Please check if the website structure has changed or if there are any access issues.`));
         }
+    } catch (error) {
+        console.error(clc.red('An error occurred:'), error);
     }
-
-    return allConsultants;
 }
 
 // Usage: node script.js [maxPages]
