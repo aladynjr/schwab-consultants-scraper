@@ -11,10 +11,10 @@ if (!fs.existsSync(resultsDir)) {
 }
 
 async function fetchPageWithRetry(searchString, pageNumber, pageSize = 300, maxRetries = 3) {
-    const resultMax = pageNumber * pageSize;
+    const resultMax = pageNumber === 1 ? 0 : (pageNumber - 1) * pageSize;
     const data = `searchString=${searchString}&pageSize=${pageSize}&resultMax=${resultMax}`;
     console.log(clc.blue(`Fetching page ${pageNumber} for letter '${searchString}'...`));
-    
+    console.log(data)
     const config = {
         method: 'post',
         url: 'https://client.schwab.com/public/consultant/searchByName/',
@@ -160,6 +160,16 @@ async function scrapeConsultantsForLetter(letter) {
     return allConsultants;
 }
 
+function removeDuplicates(consultants) {
+    const uniqueConsultants = new Map();
+    for (const consultant of consultants) {
+        if (!uniqueConsultants.has(consultant.id)) {
+            uniqueConsultants.set(consultant.id, consultant);
+        }
+    }
+    return Array.from(uniqueConsultants.values());
+}
+
 async function scrapeConsultantsList() {
     console.log(clc.magenta(`Starting scraper for all alphabets...`));
     
@@ -179,11 +189,15 @@ async function scrapeConsultantsList() {
         const endTime = Date.now();
         
         if (allConsultants.length > 0) {
-            await saveToFile(allConsultants, 'all_consultants_list.json');
-            await saveToFile(prepareConsultantData(allConsultants), 'all_consultants_list.csv', 'csv');
+            console.log(clc.yellow(`Removing duplicates...`));
+            const uniqueConsultants = removeDuplicates(allConsultants);
+            console.log(clc.yellow(`Duplicates removed. Unique consultants: ${uniqueConsultants.length}`));
+
+            await saveToFile(uniqueConsultants, 'all_consultants_list_unique.json');
+            await saveToFile(prepareConsultantData(uniqueConsultants), 'all_consultants_list_unique.csv', 'csv');
             
             console.log(clc.green.bold(`\nScraping completed successfully!`));
-            console.log(clc.cyan(`Total consultants scraped: ${allConsultants.length}`));
+            console.log(clc.cyan(`Total unique consultants scraped: ${uniqueConsultants.length}`));
             console.log(clc.cyan(`Time taken: ${((endTime - startTime) / 1000).toFixed(2)} seconds`));
         } else {
             console.log(clc.yellow(`No consultants were scraped. Please check if the website structure has changed or if there are any access issues.`));
@@ -192,6 +206,7 @@ async function scrapeConsultantsList() {
         console.error(clc.red('An error occurred:'), error);
     }
 }
+
 
 // Usage: node script.js
 scrapeConsultantsList();

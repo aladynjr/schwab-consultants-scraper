@@ -5,6 +5,8 @@
     "cheerio": "^1.0.0",
     "cli-color": "^2.0.4",
     "csv-writer": "^1.6.0",
-    "https-proxy-agent": "^5.0.1"
+    "https-proxy-agent": "^5.0.1",
+    "json2csv": "^6.0.0-alpha.2",
+    "p-limit": "^2.3.0"
   }
 }
